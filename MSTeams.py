@@ -4,6 +4,9 @@ import requests
 import configparser
 import time
 from datetime import datetime
+import logging
+from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
+
 
 def load_settings(config_file):
     """
@@ -17,8 +20,34 @@ def load_settings(config_file):
         'logfolder': config['WebhookSettings']['logfolder'].replace('%%', '%'),
         'language': {k: v for k, v in config['LanguageSettings'].items()},
         'icons': {k: v for k, v in config['IconSettings'].items()},
-        'entities': {k: v for k, v in config['EntitySettings'].items()}
+        'entities': {k: v for k, v in config['EntitySettings'].items()},
+        'debug': {k: v for k, v in config['DebugSettings'].items()}        
     }
+
+def configure_logging(settings):
+    debug_settings = settings.get('debug', {})
+    if debug_settings.get('enabled', 'no').lower() == 'yes':
+        log_file_path = debug_settings.get('log_file_path', 'debug.log')
+        max_size_mb = int(debug_settings.get('max_size_mb', 5))
+        backup_count = int(debug_settings.get('backup_count', 3))
+        rotate_interval_hours = int(debug_settings.get('rotate_interval_hours', 3))
+
+        # Set up basic configuration for the logging system
+        logging.basicConfig(level=logging.DEBUG,
+                            format='%(asctime)s - %(levelname)s - %(message)s',
+                            datefmt='%Y-%m-%d %H:%M:%S')
+
+        # Use a rotating file handler or timed rotating file handler based on config
+        if max_size_mb > 0:
+            handler = RotatingFileHandler(log_file_path, maxBytes=max_size_mb*1024*1024, backupCount=backup_count)
+        else:
+            handler = TimedRotatingFileHandler(log_file_path, when="h", interval=rotate_interval_hours, backupCount=backup_count)
+
+        logging.getLogger('').addHandler(handler)
+    else:
+        # Disable logging if not enabled
+        logging.disable(logging.CRITICAL)
+
 
 def send_to_home_assistant(base_url, token, entity_id, state, attributes):
     """
@@ -98,9 +127,9 @@ def update_home_assistant(availability, notification_count, settings):
 
 if __name__ == "__main__":
     settings = load_settings('MSTeamsSettings.config')
+    configure_logging(settings)
 
     # Debug print to verify entities loading
     print(settings['entities'])
 
     main_loop(settings)
-
