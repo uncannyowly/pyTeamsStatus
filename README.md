@@ -1,14 +1,14 @@
 
 # Microsoft Teams Status Monitor for Home Assistant
 
-## Introduction
+## Introduction (EBOOZ)
 
 In the era of remote work, integrating your digital workspace with your home automation system offers a seamless way to enhance your work-from-home experience. This solution provides a method to automate activities in your home automation system based on your Microsoft Teams status without needing organizational consent for Microsoft Graph API.
 
 This script monitors the Microsoft Teams client logfile for changes in status and activity, updating corresponding sensors in Home Assistant. It's designed for the NEW version of Microsoft Teams, which logs status information in a readable format.
 
 > [!NOTE]
-> This solution only works for the NEW version of Microsoft Teams. The new version was updated to finally contain a status in the logs.txt file which can be read by the script.
+> This solution only works for the NEW version of Microsoft Teams. The new version was updated to finally contain a status in the logs.txt file which can be read by the script. The original script from EBOOZ was migrated from Powershell to Python. 
 
 ## Requirements
 
@@ -57,11 +57,7 @@ After modifying `configuration.yaml`, restart Home Assistant to register the new
       ```bash
       python MSTeams.py
       ```
-    - To run as a service on Windows, you can use tools like NSSM (Non-Sucking Service Manager) or Task Scheduler. For Linux systems, consider creating a systemd service.
-
-4. **PowerShell Setup (Alternative to Python script)**:
-    - If preferring PowerShell, follow the PowerShell setup instructions provided, adjusting `Settings.ps1` with your configuration details.
-    - Use the provided PowerShell commands to set up the monitoring script as a service.
+    - To run as a service on Windows, you can use tools like NSSM (Non-Sucking Service Manager) or Task Scheduler.
 
 ## Debugging and Logging
 
