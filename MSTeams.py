@@ -96,12 +96,6 @@ def main_loop(settings):
 def infer_call_status_from_line(line):
     """
     Infers the call status from a single line of log text.
-    
-    Parameters:
-    - line: A string representing a single line of log text.
-    
-    Returns:
-    - call_status: A string indicating the call status inferred from the line.
     """
     search_pattern_start = re.compile(r'WebViewWindowWin:.*tags=Call.*Window previously was visible = false')
     search_pattern_end = re.compile(r'BluetoothRadioManager: Device watcher is Started.')
@@ -111,32 +105,29 @@ def infer_call_status_from_line(line):
     elif search_pattern_end.search(line):
         return "Not in a call"
     
-    # Return None if no call status could be inferred from the line
     return None
 
 
 
 def process_log_file(file_path, settings):
     """
-    Processes the latest log file to extract availability and call status.
+    Processes the latest log file to extract availability, call status, and notification count.
     """
     search_pattern = re.compile(r'availability: (\w+), unread notification count: (\d+)')
-    last_availability = None
-    last_notification_count = None
-    call_status = None
+    call_status = "Not in a call"  # Default call status
     
     try:
         with open(file_path, 'r', encoding='utf-8') as file:
             for line in file:
-                # Check for availability and notification count
                 match = search_pattern.search(line)
                 if match:
                     last_availability, last_notification_count = match.groups()
-                # Infer call status from log line
-                inferred_status = infer_call_status_from_log(line)
+                
+                inferred_status = infer_call_status_from_line(line)
                 if inferred_status:
-                    call_status = inferred_status
-                    
+                    call_status = inferred_status  # Update call status based on the log line
+
+        # Update Home Assistant with the last found availability, notification count, and call status
         if last_availability and last_notification_count:
             logging.info(f"Detected status: {last_availability}, Call Status: {call_status}, Notification Count: {last_notification_count}")
             update_home_assistant(last_availability, last_notification_count, call_status, settings)
@@ -144,18 +135,19 @@ def process_log_file(file_path, settings):
         logging.error(f"Error reading file {file_path}: {e}")
 
 
+
 # Adjust `update_home_assistant` to handle call status
 def update_home_assistant(availability, notification_count, call_status, settings):
     """
     Updates Home Assistant entities based on Teams availability, call status, and notification count.
     """
-    # Logic to update Home Assistant based on availability and call status
     logging.info(f"Updating Home Assistant: Availability={availability}, Call Status={call_status}, Notification Count={notification_count}")
+    
     entity_id_status = settings['entities']['entitystatus']
     entity_id_activity = settings['entities']['entityactivity']  # Assuming you want to update this based on call status
     
     state = settings['language'].get(availability.lower(), "unknown")  # Ensure "available" is mapped correctly
-    icon_key = 'inacall' if "call" in state.lower() else 'notinacall'
+    icon_key = 'inacall' if call_status == "In a call" else 'notinacall'
     icon = settings['icons'].get(icon_key, "mdi:account")  # Ensure default icon is set
 
     # Define attributes for the status entity
@@ -164,22 +156,22 @@ def update_home_assistant(availability, notification_count, call_status, setting
         "icon": settings['icons'].get(state.lower(), "mdi:account")  # Use a specific icon for each status
     }
 
-    # Optionally define attributes for the activity entity
+    # Define attributes for the activity entity based on call status
+    activity_state = "in a call" if call_status == "In a call" else "not in a call"
     attributes_activity = {
         "friendly_name": settings['entities']['entityactivityname'],
-        "icon": icon  # This could be based on whether in a call or not
+        "icon": icon
     }
 
-    # Update Home Assistant for both status and activity
-    print(f"Updating Availability: {availability}, Notification Count: {notification_count}")
+    print(f"Updating Availability: {availability}, Notification Count: {notification_count}, Call Status: {activity_state}")
     send_to_home_assistant(settings['HAurl'], settings['token'], entity_id_status, state, attributes_status)
-    send_to_home_assistant(settings['HAurl'], settings['token'], entity_id_activity, "in a call" if "inacall" in icon_key else "not in a call", attributes_activity)
+    send_to_home_assistant(settings['HAurl'], settings['token'], entity_id_activity, activity_state, attributes_activity)
 
 if __name__ == "__main__":
     settings = load_settings('MSTeamsSettings.config')
     configure_logging(settings)
 
     # Debug print to verify entities loading
-    print(settings['entities'])
+    #print(settings['entities'])
 
     main_loop(settings)
