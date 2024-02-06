@@ -16,7 +16,8 @@ if !(installScript){thorw "Err! No script found. Review path."; Exit 1}
 Start-Process -FilePath .\nssm.exe -ArgumentList "install 'Microsoft Teams Status Monitor' $pythonDir $installScript " -NoNewWindow -Wait
 
 #Get user who is running script's home dir, update config if they didn't do so before installing service. 
-$UserPath = "$env:Userprofile\AppData\Local\Packages\MSTeams_8wekyb3d8bbwe\LocalCache\Microsoft\MSTeams\Logs"
+$UserPath = "$env:Userprofile\AppData\Local"
+
 (Get-Content -raw .\MSTeamsSettings.config).replace('%%localappdata%%',$UserPath) | Out-File .\MSTeamsSettings.config
 
 Start-Service -Name "Microsoft Teams Status Monitor"
