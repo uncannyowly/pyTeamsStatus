@@ -1,5 +1,12 @@
+#Modify these: 
 $installDir = "C:\git\pyTeamsStatus" #Where you cloned repo to
 $pythonDir = "$env:Userprofile\scoop\apps\python\current\python.exe" #Assumes you used Scoop to install Python 3
+
+<# 
+    ################################################
+    Shouldn't need to modify below here... hopefully 
+    ################################################
+#> 
 
 Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope CurrentUser 
 
@@ -11,7 +18,10 @@ $logDir = "$installDir\logs"
 if !($logDir){mkdir $logDir|Out-Null}
 
 $installScript = "$installDir\Get-TeamsStatus.py"
-if !(installScript){thorw "Err! No script found. Review path."; Exit 1}
+if !($installScript){  
+    throw "Err! No script found. Review path.";
+    exit 1
+}
 
 Start-Process -FilePath .\nssm.exe -ArgumentList "install 'Microsoft Teams Status Monitor' $pythonDir $installScript " -NoNewWindow -Wait
 
