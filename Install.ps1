@@ -15,10 +15,10 @@ Unblock-File $installDir\MSTeamsSettings.config
 Unblock-File $installDir\Get-TeamsStatus.py 
 
 $logDir = "$installDir\logs"
-if !($logDir){mkdir $logDir|Out-Null}
+if (!($logDir)){mkdir $logDir|Out-Null}
 
 $installScript = "$installDir\Get-TeamsStatus.py"
-if !($installScript){  
+if (!($installScript)){  
     throw "Err! No script found. Review path.";
     exit 1
 }

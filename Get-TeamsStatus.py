@@ -6,7 +6,19 @@ import time
 from datetime import datetime
 import logging
 from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
 
+class LogFileHandler(FileSystemEventHandler):
+    def __init__(self, settings):
+        self.settings = settings
+
+    def on_modified(self, event):
+        if not event.is_directory:
+            log_dir = os.path.expandvars(self.settings['logfolder'])
+            file_pattern = re.compile(r'MSTeams_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2}\.\d+)\.log')
+            if file_pattern.match(os.path.basename(event.src_path)):
+                process_log_file(event.src_path, self.settings)
 
 def load_settings(config_file):
     """
@@ -49,6 +61,28 @@ def configure_logging(settings):
         logging.disable(logging.CRITICAL)
 
 
+def start_log_read(settings):
+        log_dir = os.path.expandvars(settings['logfolder'])
+        if not os.path.exists(log_dir):
+            print("Log directory does not exist, check configuration.")
+            exit 
+
+        file_pattern = re.compile(r'MSTeams_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2}\.\d+)\.log')
+        latest_file = None
+        latest_time = None
+
+        for file_name in os.listdir(log_dir):
+            match = file_pattern.match(file_name)
+            if match:
+                file_datetime = datetime.strptime(f"{match.group(1)} {match.group(2)}", '%Y-%m-%d %H-%M-%S.%f')
+                if latest_time is None or file_datetime > latest_time:
+                    latest_time = file_datetime
+                    latest_file = file_name
+
+        if latest_file:
+            process_log_file(os.path.join(log_dir, latest_file), settings)
+
+
 def send_to_home_assistant(base_url, token, entity_id, state, attributes):
     """
     Sends a request to Home Assistant to update an entity's state and attributes.
@@ -66,30 +100,24 @@ def send_to_home_assistant(base_url, token, entity_id, state, attributes):
 
 def main_loop(settings):
     """
-    Main loop that continuously checks for the latest Teams log file and processes it.
+    Original: Main loop that continuously checks for the latest Teams log file and processes it.
+    This update replaces the original main loop with an event-driven approach using watchdog.
     """
-    while True:
-        log_dir = os.path.expandvars(settings['logfolder'])
-        if not os.path.exists(log_dir):
-            print("Log directory does not exist, check configuration.")
-            break
+    path = os.path.expandvars(settings['logfolder'])
+    if not os.path.exists(path):
+        print("Log directory does not exist, check configuration.")
+        return
 
-        file_pattern = re.compile(r'MSTeams_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2}\.\d+)\.log')
-        latest_file = None
-        latest_time = None
-
-        for file_name in os.listdir(log_dir):
-            match = file_pattern.match(file_name)
-            if match:
-                file_datetime = datetime.strptime(f"{match.group(1)} {match.group(2)}", '%Y-%m-%d %H-%M-%S.%f')
-                if latest_time is None or file_datetime > latest_time:
-                    latest_time = file_datetime
-                    latest_file = file_name
-
-        if latest_file:
-            process_log_file(os.path.join(log_dir, latest_file), settings)
-
-        time.sleep(60)  # Wait for 60 seconds before checking for new log files again
+    event_handler = LogFileHandler(settings)
+    observer = Observer()
+    observer.schedule(event_handler, path, recursive=False)
+    observer.start()
+    try:
+        while True:
+            time.sleep(10)  # Sleep time reduced to maintain responsiveness without busy waiting
+    except KeyboardInterrupt:
+        observer.stop()
+    observer.join()
 
 
 
@@ -169,9 +197,6 @@ def update_home_assistant(availability, notification_count, call_status, setting
 
 if __name__ == "__main__":
     settings = load_settings('MSTeamsSettings.config')
+    start_log_read(settings)
     configure_logging(settings)
-
-    # Debug print to verify entities loading
-    #print(settings['entities'])
-
     main_loop(settings)
