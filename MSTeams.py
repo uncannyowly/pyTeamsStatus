@@ -52,16 +52,17 @@ def configure_logging(settings):
 def send_to_home_assistant(base_url, token, entity_id, state, attributes):
     """
     Sends a request to Home Assistant to update an entity's state and attributes.
+    Includes detailed logging of the request and response.
     """
     url = f"{base_url}/api/states/{entity_id}"
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     payload = {"state": state, "attributes": attributes}
     try:
         response = requests.post(url, json=payload, headers=headers)
-        response.raise_for_status()
-        print(f"Successfully updated {entity_id} in Home Assistant.")
+        response.raise_for_status()  # This will throw an error for 4XX/5XX responses
+        logging.info(f"Successfully updated {entity_id} in Home Assistant to '{state}' with attributes {attributes}.")
     except requests.RequestException as e:
-        print(f"Error updating {entity_id} in Home Assistant: {e}")
+        logging.error(f"Error updating {entity_id} in Home Assistant: {e}. Payload: {payload}")
 
 def main_loop(settings):
     """
@@ -90,40 +91,89 @@ def main_loop(settings):
 
         time.sleep(60)  # Wait for 60 seconds before checking for new log files again
 
+
+
+def infer_call_status_from_line(line):
+    """
+    Infers the call status from a single line of log text.
+    
+    Parameters:
+    - line: A string representing a single line of log text.
+    
+    Returns:
+    - call_status: A string indicating the call status inferred from the line.
+    """
+    search_pattern_start = re.compile(r'WebViewWindowWin:.*tags=Call.*Window previously was visible = false')
+    search_pattern_end = re.compile(r'BluetoothRadioManager: Device watcher is Started.')
+    
+    if search_pattern_start.search(line):
+        return "In a call"
+    elif search_pattern_end.search(line):
+        return "Not in a call"
+    
+    # Return None if no call status could be inferred from the line
+    return None
+
+
+
 def process_log_file(file_path, settings):
     """
-    Processes the latest log file to extract availability and notification count.
+    Processes the latest log file to extract availability and call status.
     """
     search_pattern = re.compile(r'availability: (\w+), unread notification count: (\d+)')
+    last_availability = None
+    last_notification_count = None
+    call_status = None
+    
     try:
         with open(file_path, 'r', encoding='utf-8') as file:
             for line in file:
+                # Check for availability and notification count
                 match = search_pattern.search(line)
                 if match:
-                    update_home_assistant(match.group(1), match.group(2), settings)
+                    last_availability, last_notification_count = match.groups()
+                # Infer call status from log line
+                inferred_status = infer_call_status_from_log(line)
+                if inferred_status:
+                    call_status = inferred_status
+                    
+        if last_availability and last_notification_count:
+            logging.info(f"Detected status: {last_availability}, Call Status: {call_status}, Notification Count: {last_notification_count}")
+            update_home_assistant(last_availability, last_notification_count, call_status, settings)
     except Exception as e:
-        print(f"Error reading file {file_path}: {e}")
+        logging.error(f"Error reading file {file_path}: {e}")
 
-def update_home_assistant(availability, notification_count, settings):
-    """
-    Updates Home Assistant entities based on Teams availability and notification count.
-    """
-    # Adjusting to lowercase for consistent key access
-    if 'entitystatus' not in settings['entities']:
-        print("Error: 'entitystatus' key not found in settings['entities']")
-        return  # Early return if 'entitystatus' is missing
 
-    entity_id = settings['entities']['entitystatus']
-    state = settings['language'].get(availability.lower(), availability)  # Lowercase for matching
-    icon_key = 'inacall' if state.lower() in ["inacall", "onthephone"] else 'notinacall'
-    icon = settings['icons'].get(icon_key.lower(), "mdi:account")  # Lowercase for consistency
-    attributes = {
+# Adjust `update_home_assistant` to handle call status
+def update_home_assistant(availability, notification_count, call_status, settings):
+    """
+    Updates Home Assistant entities based on Teams availability, call status, and notification count.
+    """
+    # Logic to update Home Assistant based on availability and call status
+    logging.info(f"Updating Home Assistant: Availability={availability}, Call Status={call_status}, Notification Count={notification_count}")
+    entity_id_status = settings['entities']['entitystatus']
+    entity_id_activity = settings['entities']['entityactivity']  # Assuming you want to update this based on call status
+    
+    state = settings['language'].get(availability.lower(), "unknown")  # Ensure "available" is mapped correctly
+    icon_key = 'inacall' if "call" in state.lower() else 'notinacall'
+    icon = settings['icons'].get(icon_key, "mdi:account")  # Ensure default icon is set
+
+    # Define attributes for the status entity
+    attributes_status = {
         "friendly_name": settings['entities']['entitystatusname'],
-        "icon": icon
+        "icon": settings['icons'].get(state.lower(), "mdi:account")  # Use a specific icon for each status
     }
 
-    print(f"Latest Availability: {availability}, Latest Notification Count: {notification_count}")
-    send_to_home_assistant(settings['HAurl'], settings['token'], entity_id, state, attributes)
+    # Optionally define attributes for the activity entity
+    attributes_activity = {
+        "friendly_name": settings['entities']['entityactivityname'],
+        "icon": icon  # This could be based on whether in a call or not
+    }
+
+    # Update Home Assistant for both status and activity
+    print(f"Updating Availability: {availability}, Notification Count: {notification_count}")
+    send_to_home_assistant(settings['HAurl'], settings['token'], entity_id_status, state, attributes_status)
+    send_to_home_assistant(settings['HAurl'], settings['token'], entity_id_activity, "in a call" if "inacall" in icon_key else "not in a call", attributes_activity)
 
 if __name__ == "__main__":
     settings = load_settings('MSTeamsSettings.config')
