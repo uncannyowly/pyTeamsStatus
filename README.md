@@ -57,7 +57,9 @@ After modifying `configuration.yaml`, restart Home Assistant to register the new
       ```bash
       python MSTeams.py
       ```
-    - To run as a service on Windows, you can use tools like NSSM (Non-Sucking Service Manager) or Task Scheduler.
+    - To run as a service on Windows, you can use tools like NSSM (Non-Sucking Service Manager) or Task Scheduler. You may need to place an absolute path in the config file when doing this, depending on the user that is setup in the service. 
+      - A "System" service will not resolve the logged in user's log location path using the localappdata env var. In this scenario, you would need an absolute path in the config.
+      - Alternatively, you can setup the service to use your user account. This however comes with it's own set of limitations such as passwords and management. 
 
 ## Debugging and Logging
 
