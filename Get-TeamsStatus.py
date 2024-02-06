@@ -9,17 +9,6 @@ from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
-class LogFileHandler(FileSystemEventHandler):
-    def __init__(self, settings):
-        self.settings = settings
-
-    def on_modified(self, event):
-        if not event.is_directory:
-            log_dir = os.path.expandvars(self.settings['logfolder'])
-            file_pattern = re.compile(r'MSTeams_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2}\.\d+)\.log')
-            if file_pattern.match(os.path.basename(event.src_path)):
-                process_log_file(event.src_path, self.settings)
-
 def load_settings(config_file):
     """
     Loads configuration settings from a given file.
@@ -61,28 +50,6 @@ def configure_logging(settings):
         logging.disable(logging.CRITICAL)
 
 
-def start_log_read(settings):
-        log_dir = os.path.expandvars(settings['logfolder'])
-        if not os.path.exists(log_dir):
-            print("Log directory does not exist, check configuration.")
-            exit 
-
-        file_pattern = re.compile(r'MSTeams_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2}\.\d+)\.log')
-        latest_file = None
-        latest_time = None
-
-        for file_name in os.listdir(log_dir):
-            match = file_pattern.match(file_name)
-            if match:
-                file_datetime = datetime.strptime(f"{match.group(1)} {match.group(2)}", '%Y-%m-%d %H-%M-%S.%f')
-                if latest_time is None or file_datetime > latest_time:
-                    latest_time = file_datetime
-                    latest_file = file_name
-
-        if latest_file:
-            process_log_file(os.path.join(log_dir, latest_file), settings)
-
-
 def send_to_home_assistant(base_url, token, entity_id, state, attributes):
     """
     Sends a request to Home Assistant to update an entity's state and attributes.
@@ -99,6 +66,33 @@ def send_to_home_assistant(base_url, token, entity_id, state, attributes):
         logging.error(f"Error updating {entity_id} in Home Assistant: {e}. Payload: {payload}")
 
 def main_loop(settings):
+    """
+    Main loop that continuously checks for the latest Teams log file and processes it.
+    """
+    while True:
+        log_dir = os.path.expandvars(settings['logfolder'])
+        if not os.path.exists(log_dir):
+            print("Log directory does not exist, check configuration.")
+            break
+
+        file_pattern = re.compile(r'MSTeams_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2}\.\d+)\.log')
+        latest_file = None
+        latest_time = None
+
+        for file_name in os.listdir(log_dir):
+            match = file_pattern.match(file_name)
+            if match:
+                file_datetime = datetime.strptime(f"{match.group(1)} {match.group(2)}", '%Y-%m-%d %H-%M-%S.%f')
+                if latest_time is None or file_datetime > latest_time:
+                    latest_time = file_datetime
+                    latest_file = file_name
+
+        if latest_file:
+            process_log_file(os.path.join(log_dir, latest_file), settings)
+
+        time.sleep(3)  # Wait for 3 seconds before checking for new log files again. Original PWSH was 1 second delay. 
+
+def main_observer(settings):
     """
     Original: Main loop that continuously checks for the latest Teams log file and processes it.
     This update replaces the original main loop with an event-driven approach using watchdog.
@@ -119,8 +113,6 @@ def main_loop(settings):
         observer.stop()
     observer.join()
 
-
-
 def infer_call_status_from_line(line):
     """
     Infers the call status from a single line of log text.
@@ -135,14 +127,14 @@ def infer_call_status_from_line(line):
     
     return None
 
-
-
 def process_log_file(file_path, settings):
     """
     Processes the latest log file to extract availability, call status, and notification count.
+    If specific patterns are not found, the status will be set to "unknown."
     """
     search_pattern = re.compile(r'availability: (\w+), unread notification count: (\d+)')
     call_status = "Not in a call"  # Default call status
+    found_text = False  # Flag to track if the expected text is found
     
     try:
         with open(file_path, 'r', encoding='utf-8') as file:
@@ -150,10 +142,19 @@ def process_log_file(file_path, settings):
                 match = search_pattern.search(line)
                 if match:
                     last_availability, last_notification_count = match.groups()
+                    found_text = True  # Set flag to True if the pattern is found
                 
                 inferred_status = infer_call_status_from_line(line)
                 if inferred_status:
                     call_status = inferred_status  # Update call status based on the log line
+                    found_text = True  # Set flag to True if the pattern is found
+
+        # If the expected text is not found, set the status to "unknown"
+        if not found_text:
+            last_availability = "unknown"
+            last_notification_count = "unknown"
+            call_status = "unknown"
+            logging.info("No specific patterns were found in the log file. Setting status to 'unknown'.")
 
         # Update Home Assistant with the last found availability, notification count, and call status
         if last_availability and last_notification_count:
@@ -162,6 +163,27 @@ def process_log_file(file_path, settings):
     except Exception as e:
         logging.error(f"Error reading file {file_path}: {e}")
 
+
+def start_log_read(settings):
+        log_dir = os.path.expandvars(settings['logfolder'])
+        if not os.path.exists(log_dir):
+            print("Log directory does not exist, check configuration.")
+            exit 
+
+        file_pattern = re.compile(r'MSTeams_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2}\.\d+)\.log')
+        latest_file = None
+        latest_time = None
+
+        for file_name in os.listdir(log_dir):
+            match = file_pattern.match(file_name)
+            if match:
+                file_datetime = datetime.strptime(f"{match.group(1)} {match.group(2)}", '%Y-%m-%d %H-%M-%S.%f')
+                if latest_time is None or file_datetime > latest_time:
+                    latest_time = file_datetime
+                    latest_file = file_name
+
+        if latest_file:
+            process_log_file(os.path.join(log_dir, latest_file), settings)
 
 
 # Adjust `update_home_assistant` to handle call status
@@ -197,6 +219,6 @@ def update_home_assistant(availability, notification_count, call_status, setting
 
 if __name__ == "__main__":
     settings = load_settings('MSTeamsSettings.config')
-    start_log_read(settings)
+    #start_log_read(settings) 
     configure_logging(settings)
     main_loop(settings)
