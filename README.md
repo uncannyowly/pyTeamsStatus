@@ -1,5 +1,5 @@
 
-# Microsoft Teams Status Monitor for Home Assistant
+# NEW Microsoft Teams Status Monitor for Home Assistant
 
 ## Introduction (EBOOZ)
 
@@ -8,7 +8,7 @@ In the era of remote work, integrating your digital workspace with your home aut
 This script monitors the Microsoft Teams client logfile for changes in status and activity, updating corresponding sensors in Home Assistant. It's designed for the NEW version of Microsoft Teams, which logs status information in a readable format.
 
 > [!NOTE]
-> This solution only works for the NEW version of Microsoft Teams. The new version was updated to finally contain a status in the logs.txt file which can be read by the script. The original script from EBOOZ was migrated from Powershell to Python. 
+> This solution only works for the NEW version of Microsoft Teams. The new version was updated to finally contain a status in the logs.txt file which can be read by the script. There however are still some limitations around calls that are being worked through. The original script from EBOOZ was also migrated from Powershell to Python. 
 
 ## Requirements
 
